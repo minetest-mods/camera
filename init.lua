@@ -131,3 +131,8 @@ minetest.register_craftitem("camera:camera", {
 		object:get_luaentity().path = table.copy(recordings[player:get_player_name()])
 	end,
 })
+
+-- FIXME
+-- add permanent recording of a path
+-- add autoplayback on start for singleplayer if autosave path exists.
+-- add loop playback
