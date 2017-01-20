@@ -1,33 +1,37 @@
 
 --[[
 
-Copyright 2016 - Auke Kok <sofar@foo-projects.org>
+Copyright 2017 - Elijah Duffy <theoctacian@gmail.com>
 
 License:
-    - Code: WTFPL
+    - Code: MIT
     - Models and textures: CC-BY-SA-3.0
 
-Usage: /give <name> camera:camera
+Usage: /camera
 
-    left click a camera item to start recording. While recording:
+    Execute command to start recording. While recording:
     - use up/down to accelerate/decelerate
     - use jump to brake
     - use crouch to stop recording
 
-    right click a camera item to play back a recording. While playing back:
+    Use /camera playback to play back a recording. While playing back:
     - use crouch to stop playing back
 
 --]]
 
 local recordings = {}
 
+-- camera def
 local camera = {
 	description = "Camera",
+	visual = "wielditem",
+	textures = {},
 	physical = false,
-	visual = "mesh",
-	mesh = "camera.obj",
-	textures = { "camera_camera.png" },
-	collisionbox = {-0.5,-0.5,-0.5, 0.5,0.5,0.5},
+	is_visible = false,
+	collide_with_objects = false,
+	collisionbox = {-0.5, -0.5, -0.5, 0.5, 0.5, 0.5},
+	physical = false,
+	visual = "cube",
 	driver = nil,
 	mode = 0,
 	velocity = {x=0, y=0, z=0},
@@ -42,6 +46,8 @@ local camera = {
 	end,
 }
 
+
+-- on step
 function camera:on_step(dtime)
 	if not self.driver then
 		self.object:remove()
@@ -64,7 +70,7 @@ function camera:on_step(dtime)
 		-- always modify yaw/pitch to match player
 		self.object:set_look_pitch(self.driver:get_look_pitch())
 		self.object:set_look_yaw(self.driver:get_look_yaw())
-	
+
 		-- accel/decel/stop
 		local ctrl = self.driver:get_player_control()
 		local speed = vector.distance(vector.new(), vel)
@@ -109,26 +115,33 @@ function camera:on_step(dtime)
 	end
 end
 
+-- Register entity.
 minetest.register_entity("camera:camera", camera)
 
-minetest.register_craftitem("camera:camera", {
-	description = "Camera",
-	inventory_image = "camera_item.png",
-	on_use = function(itemstack, player, pointed_thing)
-		local object = minetest.add_entity(player:getpos(), "camera:camera")
-		object:get_luaentity():init(player, 0)
-		object:setyaw(player:get_look_yaw())
-		player:set_attach(object, "", {x=0,y=10,z=0}, {x=0,y=0,z=0})
-	end,
-	on_secondary_use = function(itemstack, player, pointed_thing)
-		if not recordings[player:get_player_name()] then
-			return
+-- Register chatcommand.
+minetest.register_chatcommand("camera", {
+	description = "Manipulate recording",
+	params = "<option>",
+	func = function(name, param)
+		local player = minetest.get_player_by_name(name)  -- Get player name.
+
+		if param == "play" or param == "playback" then
+			if not recordings[name] then
+				return false, "Could not find recording"
+			end
+			local object = minetest.add_entity(player:getpos(), "camera:camera")
+			object:get_luaentity():init(player, 1)
+			object:setyaw(player:get_look_yaw())
+			player:set_attach(object, "", {x=5,y=10,z=0}, {x=0,y=0,z=0})
+			object:get_luaentity().path = table.copy(recordings[player:get_player_name()])
+			return true, "Playback started"
+		else
+			local object = minetest.add_entity(player:getpos(), "camera:camera")
+			object:get_luaentity():init(player, 0)
+			object:setyaw(player:get_look_yaw())
+			player:set_attach(object, "", {x=0,y=10,z=0}, {x=0,y=0,z=0})
+			return true, "Recording started"
 		end
-		local object = minetest.add_entity(player:getpos(), "camera:camera")
-		object:get_luaentity():init(player, 1)
-		object:setyaw(player:get_look_yaw())
-		player:set_attach(object, "", {x=5,y=10,z=0}, {x=0,y=0,z=0})
-		object:get_luaentity().path = table.copy(recordings[player:get_player_name()])
 	end,
 })
 
