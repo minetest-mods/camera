@@ -14,12 +14,59 @@ Usage: /camera
     - use jump to brake
     - use crouch to stop recording
 
-    Use /camera playback to play back a recording. While playing back:
+    Use /camera play to play back the last recording. While playing back:
     - use crouch to stop playing back
+
+    Use /camera play <name> to play a specific recording
+
+    Use /camera save <name> to save the last recording
+    - saved recordings exist through game restarts
+
+    Use /camera list to show all saved recording
 
 --]]
 
 local recordings = {}
+
+-- Load recordings
+local path = minetest.get_worldpath()
+
+local function load()
+  local res = io.open(path.."/recordings.txt", "r")
+  if res then
+    res = minetest.deserialize(res:read("*all"))
+    if type(res) == "table" then
+      recordings = res
+    end
+  end
+end
+
+load()
+
+function save()
+  io.open(path.."/recordings.txt", "w"):write(minetest.serialize(recordings))
+end
+
+-- [function] Get recording list for chat
+function get_recordings(name)
+  local recs = recordings[name]
+  local list = ""
+
+  if recs then
+    for name, path in pairs(recs) do
+      list = list..name..", "
+    end
+    return list
+  else
+    return "You do not saved any recordings."
+  end
+end
+
+-- Register on shutdown
+minetest.register_on_shutdown(save)
+
+-- Table for storing unsaved temporary recordings
+local temp = {}
 
 -- camera def
 local camera = {
@@ -90,7 +137,7 @@ function camera:on_step(dtime)
 			-- stop recording!
 			self.driver:set_detach()
 			minetest.chat_send_player(self.driver:get_player_name(), "Recorded stopped after " .. #self.path .. " points")
-			recordings[self.driver:get_player_name()] = table.copy(self.path)
+			temp[self.driver:get_player_name()] = table.copy(self.path)
 			self.object:remove()
 			return
 		end
@@ -123,18 +170,48 @@ minetest.register_chatcommand("camera", {
 	description = "Manipulate recording",
 	params = "<option>",
 	func = function(name, param)
-		local player = minetest.get_player_by_name(name)  -- Get player name.
+		local player = minetest.get_player_by_name(name)  -- Get player name
+		local param1 = param:split(" ")[1]
+		local param2 = param:split(" ")[2]
 
-		if param == "play" or param == "playback" then
-			if not recordings[name] then
-				return false, "Could not find recording"
+		if param1 == "play" then
+			local function play(path)
+				local object = minetest.add_entity(player:getpos(), "camera:camera")
+				object:get_luaentity():init(player, 1)
+				object:setyaw(player:get_look_yaw())
+				player:set_attach(object, "", {x=5,y=10,z=0}, {x=0,y=0,z=0})
+				object:get_luaentity().path = path
 			end
-			local object = minetest.add_entity(player:getpos(), "camera:camera")
-			object:get_luaentity():init(player, 1)
-			object:setyaw(player:get_look_yaw())
-			player:set_attach(object, "", {x=5,y=10,z=0}, {x=0,y=0,z=0})
-			object:get_luaentity().path = table.copy(recordings[player:get_player_name()])
+
+			-- Check for param2 (recording name)
+			if param2 and param2 ~= "" then
+				if recordings[name][param2] then
+					play(table.copy(recordings[name][param2]))
+				else
+					return false, "Invalid recording "..param2..". Use /camera list to list recordings."
+				end
+			else -- else, Check temp
+				if temp[name] then
+					play(table.copy(temp[name]))
+				else
+					return false, "No recordings could be found"
+				end
+			end
+
 			return true, "Playback started"
+		elseif param1 == "save" then
+			if not recordings[name] then
+				recordings[name] = {}
+			end
+
+			if param2 and param2 ~= "" then
+				recordings[name][param2] = temp[name]
+        return true, "Saved recording as "..param2
+			else
+				return false, "Missing name to save recording under (/camera save <name>)"
+			end
+    elseif param1 == "list" then
+      return true, "Recordings: "..get_recordings(name)
 		else
 			local object = minetest.add_entity(player:getpos(), "camera:camera")
 			object:get_luaentity():init(player, 0)
