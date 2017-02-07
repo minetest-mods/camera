@@ -29,7 +29,7 @@ Usage: /camera
 
 local recordings = {}
 
--- Load recordings
+-- [function] Load recordings
 local path = minetest.get_worldpath()
 
 local function load()
@@ -42,13 +42,15 @@ local function load()
   end
 end
 
+-- Call load
 load()
 
+-- [function] Save recordings
 function save()
   io.open(path.."/recordings.txt", "w"):write(minetest.serialize(recordings))
 end
 
--- [function] Get recording list for chat
+-- [function] Get recording list per-player for chat
 function get_recordings(name)
   local recs = recordings[name]
   local list = ""
@@ -63,13 +65,13 @@ function get_recordings(name)
   end
 end
 
--- Register on shutdown
+-- [event] On shutdown save recordings
 minetest.register_on_shutdown(save)
 
 -- Table for storing unsaved temporary recordings
 local temp = {}
 
--- camera def
+-- Camera definition
 local camera = {
 	description = "Camera",
 	visual = "wielditem",
@@ -95,18 +97,21 @@ local camera = {
 }
 
 
--- on step
+-- [event] On step
 function camera:on_step(dtime)
+  -- if not driver, remove object
 	if not self.driver then
 		self.object:remove()
 		return
 	end
+
 	local pos = self.object:getpos()
 	local vel = self.object:getvelocity()
 	local dir = self.driver:get_look_dir()
 
+  -- if record mode
 	if self.mode == 0 then
-		-- record
+		-- Update path
 		self.path[#self.path + 1] = {
 			pos = pos,
 			velocity = vel,
@@ -114,67 +119,78 @@ function camera:on_step(dtime)
 			yaw = self.driver:get_look_yaw()
 		}
 
-		-- player control of vehicle
-		-- always modify yaw/pitch to match player
+		-- Modify yaw and pitch to match driver (player)
 		self.object:set_look_pitch(self.driver:get_look_pitch())
 		self.object:set_look_yaw(self.driver:get_look_yaw())
 
-		-- accel/decel/stop
+		-- Get controls
 		local ctrl = self.driver:get_player_control()
+
+    -- Initialize speed
 		local speed = vector.distance(vector.new(), vel)
+
+    -- if up, accelerate forward
 		if ctrl.up then
-			-- forward accelerate
 			speed = math.min(speed + 0.1, 20)
 		end
+
+    -- if down, accelerate backward
 		if ctrl.down then
-			-- backward accelerate
 			speed = math.max(speed - 0.1, -20)
 		end
+
+    -- if jump, brake
 		if ctrl.jump then
-			-- brake
 			speed = math.max(speed * 0.9, 0.0)
 		end
+
+    -- if sneak, stop recording
 		if ctrl.sneak then
-			-- stop recording!
 			self.driver:set_detach()
 			minetest.chat_send_player(self.driver:get_player_name(), "Recorded stopped after " .. #self.path .. " points")
 			temp[self.driver:get_player_name()] = table.copy(self.path)
 			self.object:remove()
 			return
 		end
+
+    -- Set updated velocity
 		self.object:setvelocity(vector.multiply(self.driver:get_look_dir(), speed))
-	elseif self.mode == 1 then
-		-- stop playback ?
+	elseif self.mode == 1 then -- elseif playback mode
+		-- Get controls
 		local ctrl = self.driver:get_player_control()
+
+    -- if sneak or no path, stop playback
 		if ctrl.sneak or #self.path < 1 then
-			-- stop playback
 			self.driver:set_detach()
 			minetest.chat_send_player(self.driver:get_player_name(), "Playback stopped")
 			self.object:remove()
 			return
 		end
 
-		-- playback
+		-- Update position
 		self.object:moveto(self.path[1].pos, true)
+    -- Update yaw/pitch
 		self.driver:set_look_yaw(self.path[1].yaw - (math.pi/2))
 		self.driver:set_look_pitch(0 - self.path[1].pitch)
+    -- Update velocity
 		self.object:setvelocity(self.path[1].velocity)
+    -- Remove path table
 		table.remove(self.path, 1)
 	end
 end
 
--- Register entity.
+-- Register entity
 minetest.register_entity("camera:camera", camera)
 
--- Register chatcommand.
+-- Register chatcommand
 minetest.register_chatcommand("camera", {
 	description = "Manipulate recording",
-	params = "<option>",
+	params = "<option> <value>",
 	func = function(name, param)
-		local player = minetest.get_player_by_name(name)  -- Get player name
-		local param1 = param:split(" ")[1]
-		local param2 = param:split(" ")[2]
+		local player = minetest.get_player_by_name(name)
+		local param1, param2 = param:split(" ")[1], param:split(" ")[2]
 
+    -- if play, begin playback preperation
 		if param1 == "play" then
 			local function play(path)
 				local object = minetest.add_entity(player:getpos(), "camera:camera")
@@ -186,12 +202,13 @@ minetest.register_chatcommand("camera", {
 
 			-- Check for param2 (recording name)
 			if param2 and param2 ~= "" then
+        -- if recording exists, start
 				if recordings[name][param2] then
 					play(table.copy(recordings[name][param2]))
-				else
+				else -- else, return error
 					return false, "Invalid recording "..param2..". Use /camera list to list recordings."
 				end
-			else -- else, Check temp
+			else -- else, check temp for a recording path
 				if temp[name] then
 					play(table.copy(temp[name]))
 				else
@@ -200,20 +217,22 @@ minetest.register_chatcommand("camera", {
 			end
 
 			return true, "Playback started"
-		elseif param1 == "save" then
+		elseif param1 == "save" then -- elseif save, prepare to save path
+      -- if no table for player in recordings, initialize
 			if not recordings[name] then
 				recordings[name] = {}
 			end
 
+      -- if param2 is not blank, save
 			if param2 and param2 ~= "" then
 				recordings[name][param2] = temp[name]
         return true, "Saved recording as "..param2
-			else
+			else -- else, return error
 				return false, "Missing name to save recording under (/camera save <name>)"
 			end
-    elseif param1 == "list" then
+    elseif param1 == "list" then -- elseif list, list recordings
       return true, "Recordings: "..get_recordings(name)
-		else
+		else -- else, begin recording
 			local object = minetest.add_entity(player:getpos(), "camera:camera")
 			object:get_luaentity():init(player, 0)
 			object:setyaw(player:get_look_yaw())
@@ -222,8 +241,3 @@ minetest.register_chatcommand("camera", {
 		end
 	end,
 })
-
--- FIXME
--- add permanent recording of a path
--- add autoplayback on start for singleplayer if autosave path exists.
--- add loop playback
