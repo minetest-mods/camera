@@ -1,6 +1,7 @@
 
 --[[
 
+Copyright 2016-2017 - Auke Kok <sofar@foo-projects.org>
 Copyright 2017 - Elijah Duffy <theoctacian@gmail.com>
 
 License:
@@ -126,7 +127,7 @@ function camera:on_step(dtime)
 			speed = math.min(speed + 0.1, 20)
 		end
 		if ctrl.down then
-			-- backward acccelerate
+			-- backward accelerate
 			speed = math.max(speed - 0.1, -20)
 		end
 		if ctrl.jump then
